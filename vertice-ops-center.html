@@ -1062,23 +1062,30 @@ function saveFBConfig(cfg) { LS.set('fb_config', cfg); }
 
 async function initFirebase(cfg) {
   try {
-    // Delete existing apps to reinitialize cleanly
     if (firebase.apps.length > 0) {
-      for (const app of firebase.apps) { await app.delete(); }
+      for (const app of firebase.apps) { try { await app.delete(); } catch(e){} }
     }
     firebase.initializeApp(cfg);
     db = firebase.firestore();
-    // Enable offline persistence for reliability
-    try { await db.enablePersistence({ synchronizeTabs: true }); } catch(e) { /* already enabled or not supported */ }
-    // Test with a lightweight read instead of write
-    await db.collection('crm_records').limit(1).get();
+    // Don't block on persistence - just try
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    // Quick non-blocking test
+    db.collection('crm_records').limit(1).get().then(() => {
+      firebaseReady = true;
+      setDBIndicator('cloud');
+    }).catch(e => {
+      console.warn('Firestore read test failed:', e);
+      firebaseReady = false;
+      setDBIndicator('error');
+    });
+    // Optimistically set ready
     firebaseReady = true;
     setDBIndicator('cloud');
     return true;
   } catch(e) {
     console.error('Firebase init error:', e);
     firebaseReady = false;
-    setDBIndicator('error');
+    setDBIndicator('local');
     return false;
   }
 }
@@ -2134,21 +2141,23 @@ async function refreshMSCalendarIfConnected() {
   if (msAccount) await fetchMSCalendar();
 }
 
-// INIT — connect Firebase first, then load data and render
-(async () => {
-  await tryRestoreFirebase();
+// INIT — render immediately, connect Firebase in background
+renderDashboard();
+renderMailList();
+renderTimeblocks();
+renderCRMTable();
+renderCalendar();
+
+// Connect Firebase in background without blocking UI
+tryRestoreFirebase().then(async () => {
   if (firebaseReady) {
-    // Pull latest data from Firestore into LS cache before first render
     await getCRMRecordsAsync();
     await getMailsAsync();
-    toast('☁ Datos cargados desde Firebase');
+    renderDashboard();
+    renderMailList();
+    renderCRMTable();
   }
-  renderDashboard();
-  renderMailList();
-  renderTimeblocks();
-  renderCRMTable();
-  renderCalendar();
-})();
+});
 
 setInterval(()=>{ if($('panel-dashboard').classList.contains('active')) renderDashboard(); }, 30000);
 setInterval(()=>{ if($('panel-calendario') && $('panel-calendario').classList.contains('active')) refreshMSCalendarIfConnected(); }, 300000);
