@@ -1188,23 +1188,6 @@ async function deleteMailAsync(id) {
   }
 }
 
-async function saveMailAsync(mail) {
-  const mails = LS.get('mails') || [];
-  const idx = mails.findIndex(m => m.id === mail.id);
-  if (idx >= 0) mails[idx] = mail; else mails.unshift(mail);
-  LS.set('mails', mails);
-  if (firebaseReady) {
-    try { await db.collection('mails').doc(mail.id).set(mail); } catch(e) { console.error(e); }
-  }
-}
-
-async function deleteMailAsync(id) {
-  LS.set('mails', (LS.get('mails')||[]).filter(m=>m.id!==id));
-  if (firebaseReady) {
-    try { await db.collection('mails').doc(id).delete(); } catch(e) { console.error(e); }
-  }
-}
-
 // ═══════════════════════════════════
 //  GMAIL OAUTH — Google Identity Services
 // ═══════════════════════════════════
@@ -1664,7 +1647,7 @@ function renderTimeblocks() {
 // ═══════════════════════════════════
 let deleteTarget = null;
 
-function saveRecord() {
+async function saveRecord() {
   const get = id => $(id)?$(id).value.trim():'';
   const estado = get('f-estado');
   const now = new Date().toISOString();
