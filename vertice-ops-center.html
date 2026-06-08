@@ -1193,23 +1193,34 @@ async function loadGIS() {
   });
 }
 
-async function gmailAuth() {
+async function gmailAuth(silent = false) {
   const clientId = GMAIL_CLIENT_ID_DEFAULT;
   try {
     await loadGIS();
     gisClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: GMAIL_SCOPES,
+      prompt: silent ? 'none' : '',
+      hint: 'siancsantillana@gmail.com',
       callback: async (resp) => {
-        if (resp.error) { toast('Error Gmail: ' + resp.error, 'error'); return; }
+        if (resp.error) {
+          if (!silent) toast('Error Gmail: ' + resp.error, 'error');
+          return;
+        }
         gmailToken = resp.access_token;
+        // Save token expiry
+        LS.set('gmail_token_time', Date.now());
         updateGmailUI(true);
         await gmailFetch();
       }
     });
-    gisClient.requestAccessToken();
+    if (silent) {
+      gisClient.requestAccessToken({ prompt: 'none' });
+    } else {
+      gisClient.requestAccessToken();
+    }
   } catch(e) {
-    toast('Error al iniciar Google: ' + (e.message||e), 'error');
+    if (!silent) toast('Error al iniciar Google: ' + (e.message||e), 'error');
     console.error(e);
   }
 }
@@ -2123,9 +2134,17 @@ tryRestoreFirebase().then(async () => {
   }
 });
 
+// Auto-reconnect Gmail silently if user connected before
+const lastGmailTime = LS.get('gmail_token_time');
+if (lastGmailTime && (Date.now() - lastGmailTime) < 3600000) {
+  // Token was valid within last hour — try silent reconnect
+  setTimeout(() => gmailAuth(true), 2000);
+}
+
 setInterval(()=>{ if($('panel-dashboard').classList.contains('active')) renderDashboard(); }, 30000);
 setInterval(()=>{ if($('panel-calendario') && $('panel-calendario').classList.contains('active')) refreshMSCalendarIfConnected(); }, 300000);
-setInterval(async ()=>{ if($('panel-correos') && $('panel-correos').classList.contains('active') && gmailToken) await gmailFetch(); }, 120000);
+// Auto-refresh Gmail every 2 min
+setInterval(async ()=>{ if(gmailToken) await gmailFetch(); }, 120000);
 </script>
 </body>
 </html>
